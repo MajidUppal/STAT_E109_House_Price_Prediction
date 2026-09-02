@@ -1,0 +1,1061 @@
+---
+title: "Stats 109 Project"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(DAAG)
+library(datasets)
+library(ggplot2)
+library(dplyr)
+library(psych)
+library(caret)
+library(pROC)
+library(nnet)
+library(e1071)
+library(car)
+library(MASS)
+library(mlbench)
+library(BSDA)
+library(readr)
+library(visdat)
+library(naniar)
+library(GGally)
+library(mice)
+library(caret)
+library(lime)
+library(e1071)
+library(DescTools)
+library(corrplot)
+```
+
+## Loading Data
+
+```{r, include=FALSE}
+df_housing = read.csv('HousingDatatrain.csv')
+str(df_housing)
+```
+
+############################################################################# 
+
+EDA Part to be imported from mehmood bhai ############################################################################
+
+## EDA
+
+
+## Housing Price
+We started exploratory data analysis by focussing on the response Variable "SalePrice".  The histogram of House "SalePrice" shows that the data is right skewed. This shows that while most of the houses are sold in a range, there is demand of high priced homes in the market. The market economy limits the demand of the high priced homes to limited number of wealthy buyers. This is creating a right skewed distribution for the housing prices. For modelling we'll like the data to be normally distributed so that the skewed values don't impact our multiple linear regression model.
+
+
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+df_housing %>% ggplot(aes(x = SalePrice)) +
+  geom_histogram(color='blue',fill = 'lightblue') +
+  ggtitle('Histogram Distribution of SalePrice')+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+After applying log transformation, we can see that histogram is close to a normal distribution. Our multiple regression model will make use of log value of sale price as the predicted variable.
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+df_housing %>% ggplot(aes(x = log(SalePrice)) )+
+  geom_histogram(color='blue',fill = 'lightblue') +
+  ggtitle('Histogram Distribution of SalePrice')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+## Neighborhood
+Neighborhood is one of the important predictive variable in the DataSet. Next step in EDA was to analyze the relationship b/w "SalePrice" and different neighborhoods("Neighbborhood") in the dataset.
+
+As can be seen from the boxplot distribution of Neighborhood Vs SalePrice, there is a correlation b/w SalePrice and different Neighborhoods. Few Key Neighborhoods stands out where the Average SalePrice is higher then other neighborhoods like NridgHt, NoRidge and StoneBr. While at the same time few Neighborhoods show less Average Price like MeadowV,BrDale and IDOTRR.
+
+We decided to further explore the relationship between different neighborhoods and Sale Price by doing Bar Plots for Average and Median SalePrice for each Neighborhood. By looking at these Bar Plots, as shown below it becomes more obvious that certain neighborhoods have low Mean/Median SalePrice while certain falls in High Mean/Median SalePrice Category. Rest of the Neighborhoods has almost similar price distribution, where the mean and median sale prices are close to each other.
+
+```{r, echo=FALSE, results='hide',message=FALSE, warning=FALSE}
+
+df_housing %>% ggplot(aes(x = SalePrice, y= Neighborhood )) +
+  geom_boxplot(color='blue',fill = 'lightblue') +
+  ggtitle('Neighborhood Vs SalePrice')+
+  geom_label(stat = "count", aes(label = ..count.., x = ..count..), size=3) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+This phenomenon can also be seen from the bar plots below. Since we have less number of samples for some neighborhoods, we can re-categorized Neighborhood Variable into 3 Categories "High", "Mid" and "Low" based upon the sale price.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+par(mfrow = c(1,1))
+df_housing %>% group_by(Neighborhood) %>% summarise(Avg = mean(SalePrice), Med = Median(SalePrice)) %>%
+  ggplot(aes(x = Avg, y= Neighborhood )) +
+  geom_col(color='blue',fill = 'lightblue') +
+  ggtitle('Neighborhood Vs Mean SalePrice')+
+    theme(plot.title = element_text(hjust = 0.5))
+
+df_housing %>% group_by(Neighborhood) %>% summarise(Avg = mean(SalePrice), Med = Median(SalePrice)) %>% ggplot(aes(x = Med, y= Neighborhood )) +
+  geom_col(color='blue',fill = 'lightblue') +
+  ggtitle('Neighborhood Vs Median SalePrice')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+
+## House Quality
+House Quality is one of the important factor that normally buyer will consider while deciding to buy a house. The boxplots below shows this obvious behavior with a direct correlation b/w sale price (SalePrice) and overall quality (OverQual). Higher the Overall Quality of House the higher will be the SalePrice.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+df_housing %>% ggplot(aes(x = as.factor(OverallQual), y= SalePrice )) +
+  geom_boxplot(color='blue',fill = 'lightblue') +
+  ggtitle('SalePrice Vs Overall House Quality')+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Living area 
+Living area is another important factor that normally will dictate the House Sale Price. The scatter plot below shows that buyers are paying a higher price for bigger houses as expected. We can also see that there are two cases which are an outlier here. Upon further investigation, we found that both of the houses had deteriorated condition and located in low residential area. One of the house was sold in middle of the famous housing crisis. Considering this we can consider to remove these outliers.
+
+ 
+```{r, echo=FALSE, results='hide',message=FALSE}
+df_housing %>% ggplot(aes(x = GrLivArea, y= SalePrice )) +
+  geom_point(color='blue') +
+  ggtitle('SalePrice Vs Ground Living Area')+
+  geom_smooth(se=0, method = 'lm', color = 'blue')+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+#Lot Area
+Lot Area is another important Variable that impacts the House Sale Price. On Average bigger lot size houses in a community will go with higher Sale Price. The scatter plot below does show correlation b/w Lot Price and House Price, but due to the wide variance in Lot Area its not very clear.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+df_housing %>% ggplot(aes(x = LotArea, y= SalePrice )) +
+  geom_point(color='blue') +
+  ggtitle('SalePrice Vs Lot Area')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+ In order to normalize the relation between saleprice and lot area we decided to use Log Transformation on Lot Area. The below Scatter Plot depicts direct correlation b/w Sale Price and Lot Area. In the Plot we can still see some outliers where Lot Size even though is very high but Sale Price doesn't correlate with the sale price. From real estate perspective such high lot size areas are normally not available in high demand neighborhoods and hence there prices might vary due to that factor as well.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+df_housing %>% ggplot(aes(x = log(LotArea), y= SalePrice)) +
+  geom_point(color='blue') +
+  ggtitle('SalePrice Vs Log (Lot Area)')+
+   geom_smooth(se=0, method = 'lm', color = 'blue')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+# MSZoning
+Zoning describes if the general zoning classification of the house, if it is in agriculture area, commercial, industrial, low density residential or residential. The boxplot below is showing that the zoning has a significant impact on the sale price. The scatter plot also shows that the sale price follows a different relation with the ground living area in each zoning classification. An interesting phenomenon is that the sale price increases significantly with increase in living area in low density residential area.
+
+
+- A	Agriculture
+- C(all)	Commercial
+- FV	Floating Village Residential
+- I	Industrial
+- RH	Residential High Density
+- RL	Residential Low Density
+- RP	Residential Low Density Park 
+- RM	Residential Medium Density
+
+Since the number of samples are highly imbalanced as most of the houses falls under "RL" and "RM" Category, we decided to apply Feature Engineering on MSZoning Variable to recategorize the variable into a more generalized bucket of zoning classification.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+
+df_housing %>% ggplot(aes(x = MSZoning, y= SalePrice )) +
+  geom_boxplot(color='blue',fill = 'lightblue') +
+  geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3) +
+  ggtitle('SalePrice Vs MSZoning')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+df_housing %>% ggplot(aes(x= GrLivArea, y= SalePrice, color=MSZoning)) + geom_point() +
+  geom_smooth(se=0, method='lm')
+
+```
+
+
+
+
+## Missing Data Handling
+
+In the original data set we have lot of Data with "N/A" values. After investigating further into each variable description it was found that almost all the variables were valid values. The presence of N/A was showing absence of respective features. The data was cleaned by substituting the N/A fields with more meaningful values.
+
+For Example in case of GarageType we decided to replace N/A with "NoGarage" as per the description provided for the feature in data set description document.There were total of 18 such Features/Variables, as shown in the code below.
+```{r}
+#Handling Missing data as per data description
+df_housing$GarageType[is.na(df_housing$GarageType)] <- "NoGarage"
+df_housing$GarageYrBlt[is.na(df_housing$GarageYrBlt)] <- 0
+df_housing$GarageFinish[is.na(df_housing$GarageFinish)] <- "NoFinish"
+df_housing$GarageQual[is.na(df_housing$GarageQual)] <- "NoQual"
+df_housing$GarageCond[is.na(df_housing$GarageCond)] <- "NoCond"
+df_housing$FireplaceQu[is.na(df_housing$FireplaceQu)] <- "NoFirePlace"
+df_housing$PoolQC[is.na(df_housing$PoolQC)] <- "NoPool"
+df_housing$Fence[is.na(df_housing$Fence)] <- "NoFence"
+df_housing$MiscFeature[is.na(df_housing$MiscFeature)] <- "NoExtraFeatures"
+df_housing$Alley[is.na(df_housing$Alley)] <- "NoAlleyAccess"
+df_housing$BsmtQual[is.na(df_housing$BsmtQual)] <- "NoBasement"
+df_housing$BsmtCond[is.na(df_housing$BsmtCond)] <- "NoBasementCondition"
+df_housing$BsmtExposure[is.na(df_housing$BsmtExposure)] <- "NoBsmExposure"
+df_housing$BsmtFinType1[is.na(df_housing$BsmtFinType1)] <- "NoBsmFinType1"
+df_housing$BsmtFinType2[is.na(df_housing$BsmtFinType2)] <- "NoBsmFinType2"
+df_housing$LotFrontage[is.na(df_housing$LotFrontage)] <- 0
+df_housing$MasVnrArea[is.na(df_housing$MasVnrArea)] = 0
+df_housing$MasVnrType[is.na(df_housing$MasVnrType)] = 'None'
+
+
+```
+
+After doing the clean up, we were left with only 1 row with missing data values, which we decided to remove from the data set.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+#vis_miss(df_housing)
+df_housing[!complete.cases(df_housing),]
+
+df_housing = df_housing[complete.cases(df_housing),]
+
+
+```
+
+# Variable Type Conversion
+In our Original Dataset we had 43 Variables with Type 'Char'. Variable Type was changed for these variables to Factor in order to use them for EDA and Data Modeling purpose. List of Variables where data type was modified can be seen in Appendix for reference.**(Add the list of Char Vairables in Appendix)**
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+#Categorial Data Conversion
+cat_names=c('MSZoning','Street','Alley','LotShape','LandContour','Utilities','LotConfig','LandSlope','Neighborhood'
+,'Condition1','Condition2','BldgType','HouseStyle','RoofStyle','RoofMatl','Exterior1st','Exterior2nd','MasVnrType',
+'ExterQual','ExterCond','Foundation','BsmtQual','BsmtCond','BsmtExposure','BsmtFinType1','BsmtFinType2','Heating',
+'HeatingQC','CentralAir','Electrical','KitchenQual','Functional','FireplaceQu','GarageType','GarageFinish','GarageQual','GarageCond','PavedDrive','PoolQC','Fence','MiscFeature','SaleType','SaleCondition')
+
+
+for (i in 1:length(cat_names)){
+  df_housing[, cat_names[i]] = as.factor(df_housing[, cat_names[i]])
+}
+# str(df_housing)
+
+```
+
+
+##Feature Engineering
+
+One of the Challenges we faced during EDA was some of the Categorical Variables have high imbalance across different Categories. This impacts the training of the models and results in overfitted models, where the difference in coefficient of determination (R-Square) for  test and training models are much higher. . To avoid this, were-categorized these variables. Our methodology for recategorization was as follows.
+
+- Features with less than 5% were considered for recategorization
+- Recategorization was done by aligning the features with some commonalty onn the house sale price
+- Cases where not enough samples were available their individual categories were combined to a common bucket
+
+
+An example of such case can be seen from the feature "LotShape", which describes the shape of the propety lot.
+
+- Reg	Regular	
+- IR1	Slightly irregular
+- IR2	Moderately Irregular
+- IR3	Irregular
+
+The values here were highly imbalanced. The Bar Chart below shows that most of the Data Samples are in Regular("Reg") and slightly-irregular "IR1" Sub-Category while the others have few Data Sample Points.
+
+```{r, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
+ggplot(data=df_housing, aes(x=LotShape)) +
+        geom_histogram(stat='count',color = 'blue', fill = 'lightblue', width = 0.5)+
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3)
+        #+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+In order to overcome this Challenge, we decided to apply Feature Engineering on the Categorical Variables which has one of the sub-category with the Sample Points less then 5% of total Samples. We applied the general principle of re-categorizing by grouping sub-categories with common aspect together based on information provided in Data set dictionary. 
+For example in case of LotShape variable  we have regrouped the categorical variable into 2 sub-categories, First one is Regular "Reg" and the 2nd one is Irregular("IR"). "IR" is the combination of original sub-categories"IR1", "IR2" and "IR3".
+
+Similarly we recategorized roofing style was recategorized based upon the material used and how value it adds to the house price. Another variable, discussed above was the neighborhood as well.
+
+
+Following are the other list of variables where Feature Engineering was applied with applicable Rule for re-categorization.
+
+```{r, , echo=FALSE, results='hide',message=FALSE}
+#Featuring
+df_housing_copy1 = df_housing
+
+
+
+
+df_housing$Condition1M[df_housing$'Condition1' %in% c('Norm')] = 'normal'
+df_housing$Condition1M[df_housing$'Condition1' %in% c('PosA', 'PosN')] = 'Pos'
+df_housing$Condition1M[df_housing$'Condition1' %in% c('RRAe', 'RRNn', 'RRNe', 'RRAn')] = 'Rail'
+df_housing$Condition1M[df_housing$'Condition1' %in% c('Feedr', 'Artery')] = 'Road'
+df_housing$Condition1M = factor(df_housing$Condition1M)
+
+df_housing$Condition2M[df_housing$'Condition2' %in% c('Norm')] = 'normal'
+df_housing$Condition2M[df_housing$'Condition2' %in% c('PosA', 'PosN')] = 'Pos'
+df_housing$Condition2M[df_housing$'Condition2' %in% c('RRAe', 'RRNn', 'RRNe', 'RRAn')] = 'Rail'
+df_housing$Condition2M[df_housing$'Condition2' %in% c('Feedr', 'Artery')] = 'Road' 
+df_housing$Condition2M = factor(df_housing$Condition2M)
+
+df_housing$Exterior1M[df_housing$Exterior1st %in% c('BrkFace', 'Stone', 'Stucco', 'VinylSd', 'MetalSd')] = 'Good'
+df_housing$Exterior1M[df_housing$Exterior1st %in% c('BrkComm', 'CBlock', 'CemntBd', 'Plywood', 'PreCast', 'Wd Sdng', 'AsphShn')] = 'Normal'
+df_housing$Exterior1M[df_housing$Exterior1st %in% c('AsbShng', 'HdBoard', 'ImStucc', 'WdShing')] = 'Bad'
+df_housing$Exterior1M = factor(df_housing$Exterior1M)
+
+
+df_housing$Exterior2M[df_housing$Exterior2nd %in% c('BrkFace', 'Stone', 'Stucco', 'VinylSd', 'MetalSd', 'Other')] = 'Good'
+df_housing$Exterior2M[df_housing$Exterior2nd %in% c('Brk Cmn', 'CBlock', 'CmentBd', 'Plywood', 'PreCast', 'Wd Sdng', 'AsphShn', 'Wd Shng')] = 'Normal'
+df_housing$Exterior2M[df_housing$Exterior2nd %in% c('AsbShng', 'HdBoard', 'ImStucc')] = 'Bad'
+df_housing$Exterior2M = factor(df_housing$Exterior2M)
+
+
+# Neighborhood classification
+df_housing$nbrstatus = 'Mid'
+df_housing$nbrstatus [df_housing$Neighborhood %in% c('StoneBr', 'NridgHt', 'NoRidge')] = 'High'
+
+df_housing$nbrstatus [df_housing$Neighborhood %in% c('BrDale', 'IDOTRR',
+'MeadowV')] = 'Low'
+
+
+
+df_housing$nbrstatus = factor(df_housing$nbrstatus)
+
+
+#Funtional Status change
+df_housing = df_housing %>% mutate(Functional1 = ifelse(Functional=='Typ', 'Typ', 'Dmg'))
+df_housing$Functional1 = factor(df_housing$Functional1)
+
+
+df_housing$MSZoningM[df_housing$MSZoning %in%  c('RL', 'RP')] = 'RL'
+df_housing$MSZoningM[df_housing$MSZoning %in%  c('RM', 'RH')] = 'RMH'
+df_housing$MSZoningM[df_housing$MSZoning %in% c('A','C (all)','FV', 'I')] = 'OTH'
+df_housing$MSZoningM = factor(df_housing$MSZoningM)
+
+df_housing$LotShapeM = ifelse(df_housing$LotShape == c('Reg'), 'Reg', 'IR')
+df_housing$LotShapeM = factor(df_housing$LotShapeM)
+df_housing$LandContourM = ifelse(df_housing$LandContour == 'Lvl', 'Lvl', 'nLvl')
+df_housing$LandContourM = factor(df_housing$LandContourM)
+df_housing$LotConfigM = ifelse(df_housing$LotConfig %in% c('FR2', 'FR3'), 'FR', 
+                               as.character(df_housing$LotConfig))
+df_housing$LotConfigM = factor(df_housing$LotConfigM)
+df_housing$LandSlopeM = ifelse(df_housing$LandSlope=='Gtl', 'Gtl', 'mod_sev')
+df_housing$LandSlopeM = factor(df_housing$LandSlopeM)
+df_housing$BldgTypeM[df_housing$BldgType %in% c('Twnhs', 'TwnhsE')] = 'Twnhs'
+df_housing$BldgTypeM[df_housing$BldgType =='1Fam'] = '1Fam'
+df_housing$BldgTypeM[df_housing$BldgType %in% c('2fmCon', 'Duplex')] = '2fm_con_dup'
+df_housing$BldgTypeM = factor(df_housing$BldgTypeM)
+df_housing$RoofStyleM[df_housing$RoofStyle %in%  c('Flat', 'Shed')] = 'simp_slope'
+df_housing$RoofStyleM[df_housing$RoofStyle %in%  c('Gable', 'Gambrel')] = 'Gabbles'
+df_housing$RoofStyleM[df_housing$RoofStyle %in%  c('Hip', 'Mansard')] = 'Hipped_roof'
+df_housing$RoofStyleM = factor(df_housing$RoofStyleM)
+df_housing$MasVnrTypeM = ifelse(df_housing$MasVnrType %in%  c('BrkCmn', 'BrkFace'), 'Brk',
+                                as.character(df_housing$MasVnrType))
+df_housing$MasVnrTypeM = factor(df_housing$MasVnrTypeM)
+df_housing$ElectricalM = ifelse(df_housing$Electrical=='SBrkr', 'SBrkr', 'NonSBrkr')
+
+df_housing$ElectricalM = factor(df_housing$ElectricalM)
+
+
+
+df_housing$FenceM[df_housing$Fence %in% c('GdPrv', 'GdWo')] = 'Gd'
+df_housing$FenceM[df_housing$Fence %in% c('MnPrv', 'MnWw')] = 'Mn'
+df_housing$FenceM[df_housing$Fence %in% c('NoFence')] = 'NoFence'
+df_housing$FenceM = factor(df_housing$FenceM)
+df_housing$ExterCondM = ifelse(df_housing$ExterCond %in% c('Ex', 'Gd'), 'Gd', 'Nor')
+df_housing$ExterCondM = factor(df_housing$ExterCond)
+
+df_housing$AlleyM = ifelse(df_housing$Alley == 'NoAlleyAccess', 'NoAlleyAccess', 'Access')
+
+df_housing$SaleTypeM = ifelse(df_housing$SaleType %in% c('Normal', 'Partial'), 'Abnormal',
+                              as.character(df_housing$SaleType))
+df_housing$SaleTypeM = factor(df_housing$SaleTypeM)
+
+
+df_housing$HouseStyleM = ifelse(df_housing$HouseStyle=='1Story', '1Story', 'Other')
+df_housing$HouseStyleM[df_housing$HouseStyle %in% c('1.5Fin', '1.5Unf', '2Story', '2.5Fin', '2.5Unf' )] = '2Story'
+df_housing$HouseStyleM = factor(df_housing$HouseStyleM)
+
+
+df_housing$PavedDriveM = ifelse(df_housing$PavedDrive == 'Y', 'Y', 'N')
+df_housing$PavedDriveM = factor(df_housing$PavedDriveM)
+
+data <- data.frame( Variable = c("LotShape", "MSZoning","LandContour","LotConfig","LandSlope","BldgType","RoofStyle","MasVnrType",
+"Electrical","Fence","Alley","Condition1","Condition2","Exterior1st","Exterior2nd","Neighborhood","Functional","ExterCond","HouseStyle","PavedDrive"), ModVariable = c("LotShapeM","MSZoningM","LandContourM","LotConfigM","LandSlopeM","BldgTypeM","RoofStyleM","MasVnrTypeM",
+"ElectricalM","FenceM","AlleyM","Condition1M","Condition2M","Exterior1stM","Exterior2ndM","nbrstatus","Functional1","ExterCondM","HouseStyleM","PavedDriveM"), Comments = c("Reg , IR=IR1+IR2+IR3","RL=RL+RP , RMH=RM+RH , OTH=A+C(all)+FV+I","Lv, nLv1=Bnk+HLS+Low","FR = FR2+FR3 , Inside , Corner , CulDSac","Gtl , mod_sev = Mod + Sev","Twnhs = Twnhs + TwnhsE , 1Fam , 2fm_con_dup = 2fmCon + Duplex","simp_slope = Flat + Shed , Gabbles = Gable + Gambrel , Hipped_roof = Hip +  Mansard","Brk = BrkCmn + BrkFace , None , Stone , CBlock",
+"SBrkr , NonSBrkr =  FuseA + FuseF + FuseP + Mix","Gd = GdPrv +  GdWo , Mn = MnPrv + MnWw ,  NoFence","NoAlleyAccess , Access  = Grvl + Pave","normal = Norm , Pos = PosA + PosN , Rail = RRAe + RRNn + RRNe + RRAn , Road = Feedr + Artery","normal = Norm , Pos = PosA + PosN , Rail = RRAe + RRNn + RRNe + RRAn , Road = Feedr + Artery","Good = BrkFace + Stone + Stucco + VinylSd , Normal = BrkComm + Cblock + CemntBd + Plywood + PreCast + Wd Sdng + AsphShn , Bad = AsbShng + HdBoard + ImStucc + MetalSd + WdShing","Good = BrkFace + Stone + Stucco + VinylSd + MetalSd + Other , Normal = Brk Cmn + Cblock + CemntBd + Plywood + PreCast + Wd Sdng + AsphShn + Wd Shng , Bad = AsbShng + HdBoard + ImStucc","High = StoneBr + NridgHt + NoRidge ,  Low = BrDale + IDOTRR +  MeadowV , Mid = Rest of Neighorhoods","Typ , Dmg = Rest of Other Categories", "Gd = Ex + Gd , Nor" , "1Story , Other = SFoyer + SLvl , 2Story = 1.5Fin + 1.5Unf + 2Story + 2.5Fin+ 2.5Unf" , "Y , N = N + P" ))
+
+
+data
+```
+
+
+
+
+
+
+
+
+
+# Transformation Analysis
+All Numeric variables were analyzed to check if any kind of transformation is needed on those variables to meet the normality requirements. BoxCox Transformation was used to identify the type of transformation needed for each numeric variable. Only 2 Numeric Variable were Identified where BoxCox Transformation was needed namely "LotArea" and "GrLivArea". Since the lamda values were close to zero, we decided to apply log transformation to both variables. Response Variable "SalePrice" was also Log transformed due to skewedness of data distribution. 
+
+Below variables were not transformed because of 0 values X1stFlrSF , X2ndFlrSF , LowQualFinSF , LotFrontage.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+
+
+df_housing$SalePricelog = log(df_housing$SalePrice)
+
+df_housing$LotArealog = log(df_housing$LotArea)
+
+df_housing$GrLivArealog = log(df_housing$GrLivArea)
+
+
+
+
+
+```
+
+# Feature Engineering - New Interaction Variable
+Following 2 New Variables were created "Remodeled" and "Bath". Remodeled Variable explains if the property was remodeled and have 2 categorical replies "yes" and "no". "Bath" Variable is a new interaction term in order to have cumulative impact of number of bathrooms in the house by combining different categorical variables representing different Type of Bathrooms into one Interaction Variable. And its given by following formula. 
+
+$Bath = FullBath + 0.5*HalfBath + BsmtFullBath + 0.5*BsmtHalfBath$
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+# Remodeled Variable Creation
+# Use remodeled variable created
+df_housing = df_housing %>% mutate(Remodeled= ifelse(YearBuilt!=YearRemodAdd, 'yes', 'no'))
+df_housing$Remodeled = factor(df_housing$Remodeled)
+
+cols = c('YearBuilt', 'YearRemodAdd','SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+
+# New Bath Variable Creation
+df_housing$Bath = df_housing$FullBath + 0.5*df_housing$HalfBath + df_housing$BsmtFullBath + 0.5*df_housing$BsmtHalfBath
+
+```
+
+## Removing Columns
+While reviewing the predictive variables, one of the observation was there were some Variables where data is overwhelmingly Imbalance in favor of one of the Sub-Categories. Due to which these variables doesn't provide sufficient information and can't add any value to the model. We have decided to remove any categorical variables where 1 of the Sub-Category has more then 95% of Samples while other sub-categories combine together has less then 5% contribution. One such example can be seen below for Street variable.
+
+
+```{r,echo=FALSE, results='hide',message=FALSE,warning=FALSE}
+(streetdistr <- df_housing %>%
+  group_by(Street) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+(Utilitiesdistr <- df_housing %>%
+  group_by(Utilities) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+(PoolQCdistr <- df_housing %>%
+  group_by(PoolQC) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+(RoofMatldistr <- df_housing %>%
+  group_by(RoofMatl) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+(Heatingdistr <- df_housing %>%
+  group_by(Heating) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+(MiscFeaturedistr <- df_housing %>%
+  group_by(MiscFeature) %>%
+  summarise(percentage = n() / nrow(df_housing) * 100))
+
+
+ggplot(data=df_housing, aes(x=Street)) +
+        geom_histogram(stat='count',color = 'blue', fill = 'lightblue', width = 0.5)+
+        geom_label(stat = "count", aes(label = ..count.., y = ..count..), size=3)
+        #+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+        
+
+```
+
+
+
+Categorical variables that falls under this list are Street,Utilities,PoolQC,RoofMatl,Heating,MiscFeature. Some other features were associated to each other. An example is Heating and HeatingQC. Since Heating was removed it was decided that HeatingQC will be dropped as well as it doesn't make sense to keep HeatingQC as a feature.
+
+
+```{r, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
+#These columns are removed as they have been recategorized or removed because of uneven distribution of categories
+remove_cols = c('Street', 'Utilities', 'PoolQC', 'RoofMatl', 'Heating', 'PoolQC',
+                'MiscFeature', 'MSZoning','LotShape', 'LandContour', 'LotConfig',
+                'LandSlope', 'BldgType', 'RoofStyle','MasVnrType', 'Electrical', 
+                'Fence', 'SaleType', 'LotArea', 'GrLivArea', 'Condition1',
+                'Condition2', 'Exterior1st', 'Exterior2nd', 'Neighborhood',
+                'Functional', 'YearBuilt', 'SalePrice', 'Alley', 'ExterCond', 'HouseStyle', 'PavedDrive',
+                'KitchenAbvGr', 'HeatingQC')
+
+
+df_housing_model = df_housing %>% dplyr::select(-remove_cols)
+
+
+```
+
+
+## Correlation Plots
+Some Key Categorical Variables correlation with SalePricelog and GrLivArealog is shown below.
+
+As can be seen in below plot, Houses with similar GrLivArea tends to have lower SalePrice if the House has some Damage.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+ggplot(df_housing, aes(x=GrLivArealog, y=SalePricelog, color=Functional1)) + geom_point()+
+geom_smooth(se=0,method='lm')
+```
+As can be seen in below plot, Houses with similar GrLivArea tends to have lower SalePrice if the house is Single Story versus if the house is 2Story.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+ggplot(df_housing, aes(x=GrLivArealog, y=SalePricelog, color=HouseStyleM)) + geom_point()+
+geom_smooth(se=0,method='lm')
+
+```
+
+
+##Sampling of the Data
+
+We have used 80-20 split of the dataset, where 80% samples will be used to train the model and 20% test data will be used to evaluate the model to check for any overfitting.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+set.seed(123)
+
+ind = sample(2, nrow(df_housing_model), replace = T, prob = c(0.8, 0.2))
+
+train = df_housing_model[ind==1,]
+test = df_housing_model[ind==2,]
+
+```
+
+# Running the AIC
+
+For feature selection we used searAIC function in R. Here we utilized all three modes namely forward, backward and both (bidirectional). The backward and bi-directional iteration produced same models, however the forward iteration had a different result.
+
+
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+model = lm(SalePricelog~.-Id , train)
+
+model_aic = stepAIC(model, direction = 'both', trace=F)
+
+
+
+model_aic_f = stepAIC(model, direction = 'forward', trace=F)
+
+
+model_aic_b = stepAIC(model, direction = 'backward', trace=F) 
+
+
+model_aic$call
+
+model_aic_f$call
+
+model_aic_b$call
+
+
+```
+
+We used stepAIC function to perform the models. Here we adopted to use forward, backward and bidirectional approach to compare the results of the stepAIC function. 
+
+```         
+        forward, backward/both
+```
+
+Variables = 74, 41, 41 R-Square = 93.13, 92.7, Adj--R-Square = 92.11,92.15 Test-R-square = 81.57, 82.29
+
+We can clearly observe the following.
+
+-1. All models are overfitting, as we can see from the differences in R-square between training and test data
+
+-2. backward/both are producing slightly better results with only 42 variables compared to 72 variables in forward AIC
+
+-3. Forward AIC failed to reduce the number of variables (from a total of 80)
+.
+
+
+                  Training - Test -Variable Count
+both, backward - 92.02 - 81.40 - 42
+Forward           91.93 - 81.05 - 72
+
+
+
+
+Using the AIC Models
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+(s_aic = summary(model_aic))
+
+
+(s_aic_b=summary(model_aic_b))
+
+
+(s_aic_f = summary(model_aic_f))
+
+s_aic$r.squared
+s_aic$adj.r.squared
+s_aic$fstatistic
+s_aic$terms
+
+
+
+
+p0_b = predict(model_aic, test)
+r0_b = cor(p0_b, test$SalePricelog)
+(r2_b = r0_b^2)
+
+p0_f = predict(model_aic_f, test)
+r0_f = cor(p0_f, test$SalePricelog)
+(r2_f= r0_f^2)
+
+
+```
+
+We took the model from backward/both directional AIC and started working on it. Analyzing the output, there were two major concerns here.
+
+-   The difference between the R-Square for the training and test have a difference of \~10% suggesting that the model is overfitted.
+-   Please note that while running VIF we are getting error "Error in vif.default(m2) : there are aliased coefficients in the model". This refers to the situation where one predictor variable can be perfectly predicted by a linear combination of other predictor variables. In essence, the information they provide overlaps significantly. Using the alias function, we can see that "BsmtFinType1NoBsmtFinType1" is the variable.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+m2 = lm(formula = SalePricelog ~ OverallQual + OverallCond + YearRemodAdd + 
+    BsmtQual + BsmtExposure + BsmtFinType1 + BsmtFinSF1 + BsmtFinType2 + 
+    BsmtFinSF2 + BsmtUnfSF + CentralAir + X2ndFlrSF + LowQualFinSF + 
+    BsmtFullBath + FullBath + HalfBath + KitchenQual + Fireplaces + 
+    GarageCars + GarageArea + GarageQual + WoodDeckSF + X3SsnPorch + 
+    ScreenPorch + PoolArea + MiscVal + YrSold + SaleCondition + 
+    Condition1M + Condition2M + Exterior1M + nbrstatus + Functional1 + 
+    Remodeled + MSZoningM + LotConfigM + BldgTypeM + ExterCondM + 
+    HouseStyleM + PavedDriveM + LotArealog + GrLivArealog, data = train)
+
+summary(m2)
+
+attributes(alias(m2)$Complete)$dimnames[[1]]
+
+
+```
+
+-   We trained the model again without BsmtFinType1, so that we can analyze the Variance Inflation Factor.
+-   The VIF shows lot of variables having high VIF (\>10), showing a multicolinearity issue in the independent variables.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+#Running the model again removing BsmtFinType1
+#Not needed redo explanation for VIF
+m2_mod =  lm(formula = SalePricelog ~ OverallQual + OverallCond + YearRemodAdd + 
+    BsmtQual + BsmtExposure + BsmtFinSF1 + BsmtFinType2 + 
+    BsmtFinSF2 + BsmtUnfSF + CentralAir + X2ndFlrSF + LowQualFinSF + 
+    BsmtFullBath + FullBath + HalfBath + KitchenQual + Fireplaces + 
+    GarageCars + GarageArea + GarageQual + WoodDeckSF + X3SsnPorch + 
+    ScreenPorch + PoolArea + MiscVal + YrSold + SaleCondition + 
+    Condition1M + Condition2M + Exterior1M + nbrstatus + Functional1 + 
+    Remodeled + MSZoningM + LotConfigM + BldgTypeM + ExterCondM + 
+    HouseStyleM + PavedDriveM + LotArealog + GrLivArealog, data = train)
+
+vif(m2_mod)
+anova(m2_mod)
+
+```
+
+To address the overfitting and high VIF, two actions were taken.
+
+- For the over fitting problem, we opted to make the model more generalized by using more generalized independent variables. This will help us in variable reduction and keeping the model simple. Beside that the generalized model will reduce the over fitting problem as well. Further details on this will follow.
+- We analyzed the correlation among the depenedent and independent variables and tried to remove multi-collinearity cases as much as possible. 
+
+##Bathrooms:
+
+-   We opted to use the total number of bathrooms as our independent variable. Since we can see from the correlation of 1 confirms that the variable 'Bath' is the summation of all bathrooms in the house.
+-   Similarly, the total basement area is sum of basement floor 1, basement floor 2 and unfurnished Basement area. The correlation of '1' supports our case
+-   Total Ground living area equals 1st floor, 2nd floor and low quality finished area as can be seen from correlation of 1
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+cor(df_housing$Bath, (0.5*df_housing$BsmtHalfBath+df_housing$FullBath+df_housing$BsmtFullBath+0.5*df_housing$HalfBath))
+
+
+cor(df_housing$GrLivArea, (df_housing$X1stFlrSF+df_housing$X2ndFlrSF+df_housing$LowQualFinSF))
+
+cor(df_housing$TotalBsmtSF, (df_housing$BsmtUnfSF+df_housing$BsmtFinSF1+df_housing$BsmtFinSF2))
+
+
+```
+
+
+###Generalization of Living Area metrics
+As we can see below, from the pair plot that Ground living area (GrLivArea) has higher correlation with the SalePricelog, at the same time GrLivArea has high multicolinearity with 1st floor area (X1stFlrSF), as well as second floor area (X2stFlrSF). To address this and keeping a simple and generalized model, we'll use Ground Area(GrLivArea) in our model. We can also see that there are also a lot of houses with no second floor and no unfurnished area as well.
+
+```{r, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
+cols = c('HouseStyle', 'GrLivArea', 'X1stFlrSF', 'X2ndFlrSF', 'LowQualFinSF', 'SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+```
+
+
+
+###Basement Area
+Similar issue of multicolinearity can also be seen for Total Basement area (TotalBsmtSF) with first floor Basement ('BsmtFinSF1') and second floor basement ('BsmtFinSF2'). We can also see from the pair panel, that there are a lot of houses with neither 1st floor basement or 2nd floor basement. For a more generalized model we shall use Total Basement area and in order to avoid multi-colinearity we shall drop other basement area related metrics described below. Since we are only considering the total basement area, we can remove quality metrics for basement floor 1 and basement floor 2.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+
+cols = c('TotalBsmtSF', 'BsmtUnfSF', 'BsmtFinSF1', 'BsmtFinSF2', 'SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+```
+
+
+The Basement quality (BsmtQual) and total basement square feet area matters a lot, since majority of the home buyers will be interested in having a good quality basement with a good size. Since we decided to use the total basement area and excluded basement 1 and basement 2 area metrics for a more generalized model, it makes sense to remove BsmtFinType1 and BsmtFinType2 as the corresponding basements are taken out from the model itself.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+cols = c('BsmtQual',  'BsmtFinType1', 'BsmtFinType2', 'BsmtExposure', 'TotalBsmtSF','SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+
+```
+
+
+
+###Feature Engineering Bathrooms
+We employed feature engineering for baths. All the relevant baths were added to create an overall bathroom count.
+The reason for doing that is we have limited counts of individual baths, so instead of dropping the feature altogether, we tried to convert in a more generalized feature.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+cols = c('Bath', 'BsmtHalfBath','FullBath','BsmtFullBath','HalfBath', 'SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+corrplot(cor(df_housing %>% dplyr::select(cols)),method = 'number', type='upper')
+
+```
+
+
+###Garage Area and garage car count 
+We can also see below that the garage cars count and garage area are highly correlated with each other. This implies that using one of them will make the model better. In our case, we decided to use the garage variable because of two reasons.
+
+- The correlation between saleprice and garage car count is higher than garage square feet area.
+- For understanding of the model, garage car count is more understandable for buyers compred to garage area.
+
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+cols = c('GarageCars',  'GarageArea', 'GarageQual','SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+
+```
+
+
+
+
+Numerous quality metrics can be seen in the dataset. Their pairplot shows that Overallquality will be more correlated with the Salepricelog. This makes sense, as if the overall quality of the house is good, it is very much likley that the garage, kitchen and basement will also be of good quality.
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+cols = c('OverallQual', 'KitchenQual',  'BsmtQual', 'GarageQual', 'OverallCond', 'SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+
+
+# ggplot(df_housing, aes(x=GrLivArealog, y=SalePricelog, color=Exterior1M)) + geom_point()+
+#   geom_smooth(se=0, method='lm')
+
+```
+
+
+###Pool Area
+
+As we can see, a lot of the houses don't have a pool (1452 out 1459 don't have any pool). It will make sense to remove pool area. Similarly Groundliving area ?????
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+cols = c('GrLivArealog', 'WoodDeckSF',  'ScreenPorch','PoolArea', 'TotalBsmtSF', 'LotArealog', 'SalePricelog')
+pairs.panels(df_housing %>% dplyr::select(cols))
+
+
+```
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+summary(aov(df_housing$SalePricelog~ df_housing$HouseStyle))
+
+df_housing %>% group_by(HouseStyle) %>% summarize(cnt=n())
+```
+
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+m3 = lm(formula = SalePricelog ~ OverallQual + OverallCond + YearRemodAdd + 
+    + BsmtExposure + TotalBsmtSF +
+    CentralAir + Bath + Fireplaces + GarageCars + 
+    PavedDriveM + MiscVal + SaleCondition + Condition1M + 
+    Condition2M + Exterior1M + nbrstatus + Functional1 + Remodeled + 
+    MSZoningM + LotConfigM + RoofStyleM + ExterCondM +  LotArealog +
+    GrLivArealog + HouseStyleM, data = train)
+vif(m3)
+summary(m3)
+
+p3 = predict(m3, test)
+(cor(p3, test$SalePricelog)^2)
+
+```
+
+
+
+###Analzing Cooks Distance and Residuals
+
+```{r}
+plot(m3)
+ggplot(df_housing, aes(x=GrLivArea, y=SalePrice)) + geom_point()
+
+df_housing %>% filter(GrLivArea>4500)
+
+
+```
+
+As we can see point 524 and 1299 are outliers because of the low prices, also impacting the model. We'll remove these points and rerun the model again. 
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+df_housing_final = df_housing[-c(524, 1299), ]
+set.seed(123)
+
+ind = sample(2, nrow(df_housing_final), replace = T, prob = c(0.8, 0.2))
+
+train = df_housing_final[ind==1,]
+test = df_housing_final[ind==2,]
+
+
+ggplot(df_housing_final, aes(x=GrLivArealog, y=SalePricelog)) + geom_point()
+
+
+df_housing_final %>% dplyr::filter(GrLivArea>4000)
+```
+
+Retraining the model again after removing outliers
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+m3 = lm(formula = SalePricelog ~ OverallQual + OverallCond + YearRemodAdd + 
+    + BsmtExposure + TotalBsmtSF + MiscVal +
+    CentralAir + Bath + KitchenAbvGr + Fireplaces + GarageCars + 
+    PavedDriveM + SaleCondition + Condition1M + 
+    Condition2M + Exterior1M + nbrstatus + Functional1 + Remodeled + 
+    MSZoningM + LotConfigM + RoofStyleM + ExterCondM +  LotArealog +
+    GrLivArealog + HouseStyleM, data = train)
+vif(m3)
+summary(m3)
+
+p3 = predict(m3, test)
+(cor(p3, test$SalePricelog)^2)
+
+```
+
+The VIF is less than 10%, which means that multicollinearity is under threshold. Seeing the p-Values, we can eliminate 'MiscVal', 'Condition2M', 'LotConfigM', 'RoofStyleM', 'ExterCondM' and 'HouseStyleM'
+
+```{r, echo=FALSE, results='hide',message=FALSE}
+
+
+mfinal_reg = lm(formula = SalePricelog ~ OverallQual + OverallCond + YearRemodAdd + 
+    + BsmtExposure + TotalBsmtSF + CentralAir + Bath + KitchenAbvGr + Fireplaces + GarageCars + 
+    PavedDriveM + SaleCondition + Condition1M + 
+     Exterior1M + nbrstatus + Functional1 + Remodeled + 
+    MSZoningM +  LotArealog +
+    GrLivArealog , data = train)
+
+
+vif(mfinal_reg)
+summary(mfinal_reg)
+
+
+```
+**************************************************************************************
+
+Explanation of the above model
+
+**************************************************************************************
+As we can see in the final regression model that the most prominent features are 
+
+
+
+
+It is interesting to note that the model is using number of bathrooms instead of number of beadrooms in the housing. Using bedrooms or using an interaction of bedroom and bathroom showed a higher p-value and degradation in R-square term.
+We can also see that the neighborhood status is assigning cofficients based upon the status.i.e. Neighborhoods within normal and lower price markets are assigned lower values compared to expensive neighborhoods. We can clearly see that the model is assigning coefficients as per the status of the neighboorhood.
+
+
+
+```{r}
+predict_train = predict(mfinal_reg, train)
+sale_price_train = exp(predict_train)
+
+c_reg_train = cor(sale_price_train, exp(train$SalePricelog))
+r_reg_train = c_reg_train^2
+rmse_reg_train = sqrt(mean((sale_price_train - exp(train$SalePricelog))^2))
+
+
+predict_test = predict(mfinal_reg, test)
+sale_price_test = exp(predict_test)
+c_reg_test = cor(sale_price_test, exp(test$SalePricelog))
+r_reg_test = c_reg_test^2
+rmse_reg_test = sqrt(mean((sale_price_test - exp(test$SalePricelog))^2))
+
+print(paste("R-square_training=", r_reg_train))
+print(paste("R-square_test", r_reg_test))
+print(paste("RMSE_training", rmse_reg_train))
+print(paste("RMSE_test", rmse_reg_test))
+
+```
+
+
+****************************************************************************************************************
+                                        Decision Trees
+****************************************************************************************************************
+
+For tree ensemble. we are not using any of the transformation methods on the variables.
+```{r}
+
+remove_cols_tree = c('Street', 'Utilities', 'PoolQC', 'RoofMatl', 'Heating',
+                'MiscFeature', 'MSZoning','LotShape', 'LandContour', 'LotConfig',
+                'LandSlope', 'BldgType', 'RoofStyle','MasVnrType', 'Electrical', 
+                'Fence', 'SaleType', 'LotArealog', 'GrLivArealog', 'Condition1',
+                'Condition2', 'Exterior1st', 'Exterior2nd', 'Neighborhood',
+                'Functional', 'YearBuilt', 'SalePricelog', 'Alley', 'ExterCond', 'HouseStyle', 'PavedDrive',
+                'KitchenAbvGr', 'HeatingQC')
+df_housing_model_tree = df_housing %>% dplyr::select(-remove_cols_tree)
+
+
+
+df_housing_final_tree = df_housing_model_tree[-c(524, 1299), ]
+set.seed(123)
+
+ind = sample(2, nrow(df_housing_final_tree), replace = T, prob = c(0.8, 0.2))
+
+train_tree = df_housing_final_tree[ind==1,]
+test_tree = df_housing_final_tree[ind==2,]
+
+```
+
+## Ensemble Models
+Comparative Models were also created with different Ensemble Methods. Final Model will be chosen based on Model Comparison of Ensemble Models and Multiple Linear Regression Model.
+
+## Bagging 
+
+First Ensemble Method used was Bagging to create the Model.Cross validation with repetition set to 2 was also applied on the Training Data set. Total of 20 most important Variables was identified. Out of 20, 15 of the Variables has Importance Percentage of more than 10%.
+
+R-square was calculated for both train and test data.
+
+```{r Bagging}
+#Bagging
+cvcontrol = trainControl(method = 'repeatedcv', number=5, repeats=2, allowParallel=T)
+bag = train(SalePrice~. - Id, data=train_tree, method='treebag', trControl=cvcontrol, importance=T, na.action=na.omit)
+print(varImp(bag))
+
+pb1t = predict(bag, train_tree)
+rmse1b = sqrt(mean((pb1t - train_tree$SalePrice)^2))
+r_sq1b = cor(pb1t, train_tree$SalePrice)
+r_sq1b
+
+
+pb1 = predict(bag, test_tree)
+rmseb = sqrt(mean((pb1 - test_tree$SalePrice)^2))
+r_sqb = cor(pb1, test_tree$SalePrice)
+r_sqb
+
+
+# ", r_sq1b))
+print(paste("R-square_Train_Bag=", r_sq1b))
+print(paste("R-square_Test_Bag=", r_sqb))
+print(paste("RMSE_Train_Bag=", rmse1b))
+print(paste("RMSE_Test_Bag=", rmseb))
+
+
+
+```
+
+## Random Forest
+
+Next Ensemble Method called Random Forest was used to create the Model. Cross validation with repetition set to 2 was also applied on the Training Dataset. Total of 20 most important Variables was identified. Out of 20, 15 of the Variables has Importance Percentage of more than 10%.
+
+
+
+```{r Random_Forest}
+#Random Forest
+cvcontrolf = trainControl(method = 'repeatedcv', number=5, repeats=2, allowParallel=T)
+forest = train(SalePrice~. - Id,data=train_tree, method='rf', trainControl=cvcontrolf, importance=T)
+forest
+pf1=predict(forest, test_tree)
+print(varImp(forest))
+print(f1)
+pf1t = predict(forest, train_tree)
+rmse1f = sqrt(mean((pf1t - train_tree$SalePrice)^2))
+r_sq1f = cor(pf1t, train_tree$SalePrice)
+r_sq1f
+
+# mlook = modelLookup(forest)
+
+rmsef = sqrt(mean((pf1 - test_tree$SalePrice)^2))
+r_sqf = cor(pf1, test_tree$SalePrice)
+r_sqf
+print(varImp(forest))
+
+forest$call
+
+
+print(paste("R-square_Train_RF=", r_sq1f))
+print(paste("R-square_Test_RF=", r_sqf))
+print(paste("RMSE_Train_RF=", rmse1f))
+print(paste("RMSE_Test_RF=", rmsef))
+
+```
+## XGBoosting
+
+XGBoosting samples the data based upon the high error terms for each and every model.
+
+
+```{r}
+xgbg = train(SalePrice~. -Id, data=train_tree, method='xgbTree', trControl=cvcontrol,
+            tunelength=10, tuneGrid = expand.grid(nrounds=500, max_depth=3, eta=0.2,
+            gamma=2.1, colsample_bytree=1, min_child_weight=1, subsample=1))
+# xgbg
+
+px1tg = predict(xgbg, train_tree)
+rmse1tg = sqrt(mean((px1tg - train_tree$SalePrice)^2))
+r_sq1tg = cor(px1tg, train_tree$SalePrice)
+r_sq1tg
+
+px1g = predict(xgbg, test_tree)
+rmsexg = sqrt(mean((px1g - test$SalePrice)^2))
+r_sqxg = cor(px1g, test_tree$SalePrice)
+r_sqxg
+
+print(varImp(xgbg))
+
+xg_imp_g=varImp(xgbg)
+
+df_xgb_var = data.frame(xg_imp_g$importance)
+df_xgb_var %>% filter(Overall > 0)
+
+
+print(paste("R-square_Train_XGB=", r_sq1tg))
+print(paste("R-square_Test_XGB=", r_sqxg))
+print(paste("RMSE_Train_XGB=", rmse1tg))
+print(paste("RMSE_Test_XGB=", rmsexg))
+
+# 
+# [1] "R-square_Train_XGB= 0.999246747752064"
+# [1] "R-square_Test_XGB= 0.941865383596583"
+# [1] "RMSE_Train_XGB= 3146.08511242525"
+# [1] "RMSE_Test_XGB= 25025.9146723914"
+
+
+```
+
+
+
+
+## Models Caomparison
+
+******************
+Add model table
+*********************
+
+Comparing the 4 models 
+
+- Simple regression model is comparatively simpler to understand because of the coefficient weights and operators (+, -) explains the impact on the final regression equation
+- Tree ensemble models overall performed a lot better compared to multiple regression model
+- XGBoost performed the best among all the models
+- The tree ensemble models have overfitted the models slightly, but these values are still under threshold and can be fine tuned by obtaining additional data with the passage of time
+
